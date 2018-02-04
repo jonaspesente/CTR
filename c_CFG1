@@ -1,0 +1,331 @@
+% -------------------------------------------------------------------------
+%                     Short term record reading
+% File based in Raghu's comtraderead (view_thread/172553)
+% comtradefile: name of the record with or without the extension
+% realvalue-0: returns analogic value as record,1: w/ offset and multiplier
+% -------------------------------------------------------------------------
+function [dat, t, resolution, full_scale] = c_CFG1(Cam, Nome)
+    comtradefile = horzcat(Cam, Nome);
+    realvalue = 1;
+    if nargin < 2
+       error 'Usage: comtraderead(COMTRADE file name, realvalue) ';
+    end;
+
+    comtradefile    = strtok(comtradefile, '.');
+
+    comtrade        = [];
+    comtrade.status = 1;
+
+    filename        = comtradefile;
+
+    file            = [filename, '.cfg'];
+    [fid, message]  = fopen(file, 'r');
+    if fid == -1
+       disp(['Error: ', filename, ...
+           ' can not be opened. Check existence of the file.']);
+       return; 
+    end
+
+    AnalogInfo      = struct('An', 0, 'ch_id', ' ', 'ph', ' ',       ...
+        'ccbm', ' ', 'uu', ' ', 'a', 1, 'b', 0, 'skew', 0, 'min', 0, ...
+        'max', 0, 'primary', 0, 'secondary', 0, 'PS', ' ');
+
+    DigitalInfo     = struct('Dn', 0, 'ch_id', ' ', 'ph', ' ',       ...
+        'ccbm', ' ', 'y', 0);
+
+    SampInfo        = struct('samp', 0, 'endsamp', 0);
+
+     result         = struct(                               ...
+     'id', 0,                                               ...
+     'station_name', ' ', 'rec_dev', ' ', 'rev_year', 1991, ...
+     'TT', 0, 'nAnalogs', 0, 'nDigitals', 0,                ...
+     'anainfo', AnalogInfo,                                 ...
+     'diginfo', DigitalInfo,                                ...
+     'lf', 60,                                              ...
+     'nrates', 0,                                           ...
+     'sampinfo', SampInfo,                                  ...
+     'recDate', ' ', 'recTime', ' ',                        ...
+     'ft', 'BINARY',                                        ...
+     'timemult', 1,                                         ...
+     'n', 1,                                                ...
+     'timestamp', 1,                                        ...
+     'A', 1,                                                ...
+     'D', 1,                                                ...
+     'filename', filename                                   ...
+     );
+
+    buf                         = fgetl(fid);
+    if buf == -1
+       fclose(fid);
+       error 'Bad COMTRADE file !';
+    end
+    buf                         = strrep(buf, ',', ' , ');
+
+    [result.station_name, buf]  = strtok(buf, ',');
+
+    [result.rec_dev, buf]       = strtok(buf, ',');
+
+    buf                         = strtok(buf, ',');
+    result.rev_year             = sscanf(buf, '%d', 1);
+
+    if result.rev_year < 1997 
+       fclose(fid);
+       error 'Old versions of COMTRADE arent supported.';
+    end;
+
+    buf                         = fgetl(fid);
+    if ((buf == -1) | isempty(buf))
+       fclose(fid); 
+       error 'Corrupted COMTRADE file.'; 
+    end;
+    buf                         = strrep(buf, ',', ' , ');
+
+    [bufw, buf]                 = strtok(buf, ',');
+    result.TT                   = str2num(bufw);
+
+    [bufw, buf]                 = strtok(buf, ',');
+    result.nAnalogs             = sscanf(bufw, '%d,', 1); % ##A
+
+    [bufw, buf]                 = strtok(buf, ',');
+    result.nDigitals            = sscanf(bufw, '%d', 1); % ##D
+
+    for i = 1:result.nAnalogs
+       buf = fgetl(fid);
+
+       if buf == -1
+          fclose(fid);
+          error 'Corrupted COMTRADE file.';
+       end
+
+       buf                              = strrep(buf, ',', ' , ');
+
+       [bufw, buf]                      = strtok(buf, ',');
+       result.anainfo(i).An             = str2num(bufw);
+
+       [result.anainfo(i).ch_id, buf]   = strtok(buf, ',');
+       [result.anainfo(i).ph, buf]      = strtok(buf, ',');
+       [result.anainfo(i).ccbm, buf]    = strtok(buf, ',');
+       [result.anainfo(i).uu, buf]      = strtok(buf, ',');
+
+       [bufw, buf]                      = strtok(buf, ',');
+       result.anainfo(i).a              = str2num(bufw);
+       if isempty(result.anainfo(i).a)
+           disp(['Analogic Channel #: ', num2str(i)]);
+           error('Analogic Channel Multiplier missing. Check .cfg file');
+       end;
+
+       [bufw, buf]                      = strtok(buf, ',');
+       result.anainfo(i).b              = str2num(bufw);
+       if isempty(result.anainfo(i).b)
+           error('Analogic Channel Multiplier missing. Check .cfg file');
+       end;
+
+       [bufw, buf]                      = strtok(buf, ',');
+       if ~isempty(bufw)
+          result.anainfo(i).skew        = str2num(bufw);
+       end;
+
+       [bufw, buf]                      = strtok(buf, ',');
+       result.anainfo(i).min            = str2num(bufw);
+
+       [bufw, buf]                      = strtok(buf, ',');
+       result.anainfo(i).max            = str2num(bufw);
+
+       [bufw, buf]                      = strtok(buf, ',');
+       if ~isempty(bufw)
+          result.anainfo(i).primary     = str2num(bufw);
+       else
+          result.anainfo(i).primary     = 1;
+       end;
+
+       [bufw, buf]                      = strtok(buf, ',');
+       if ~isempty(bufw)
+          result.anainfo(i).secondary   = str2num(bufw);
+       else
+          result.anainfo(i).secondary   = 1;
+       end;
+
+       [result.anainfo(i).PS]           = strtok(buf, ',');
+       if isempty(result.anainfo(i).PS)
+          result.anainfo(i).PS          = 'P';
+       end;
+
+    end;
+
+    for i = 1:result.nDigitals
+       buf                              = fgetl(fid);
+
+       if buf == -1
+          fclose(fid);
+          error 'Bad COMTRADE file !';
+       end
+
+       buf                              = strrep(buf, ',', ' , ');
+
+       [bufw, buf]                      = strtok(buf, ',');
+       result.diginfo(i).Dn             = str2num(bufw);
+
+       [result.diginfo(i).ch_id, buf]   = strtok(buf, ',');
+       [result.diginfo(i).ph, buf]      = strtok(buf, ',');
+       [result.diginfo(i).ccbm, buf]    = strtok(buf, ',');
+
+       [bufw, buf]                      = strtok(buf, ',');
+       result.diginfo(i).y              = str2num(bufw);
+    end;
+
+    buf                                 = fgetl(fid);
+    result.lf                           = str2num(buf);
+
+    buf                                 = fgetl(fid);
+    result.nrates                       = str2num(buf);
+
+    for i = 1 : result.nrates
+       buf                              = fgetl(fid);
+
+       [bufw, buf]                      = strtok(buf, ',');
+       result.sampinfo(i).samp          = str2num(bufw);
+
+       bufw = strtok(buf, ',');
+       result.sampinfo(i).endsamp       = str2num(bufw);
+    end;
+
+    buf                                 = fgetl(fid);
+    result.recDateTimeStr               = buf;
+    [result.recDate, buf]               = strtok(buf, ',');
+    result.recTime                      = strtok(buf, ',');
+
+    buf                                 = fgetl(fid);
+    result.triDateTimeStr               = buf;
+    [result.triDate, buf]               = strtok(buf, ',');
+    result.triTime                      = strtok(buf, ',');
+
+    buf                                 = fgetl(fid);
+    result.ft                           = sscanf(buf, '%s', 1);
+    if ~( strcmp(result.ft, 'ASCII') | strcmp(result.ft, 'BINARY'))
+        error(['Specified file type is: ', result.ft, ...
+            '.Supported file type is ASCII or BINARY']);
+    end;
+
+    result.timemult                     = fscanf(fid, '%f', 1);
+
+    status                              = fclose(fid);
+
+    % ------
+
+    n                   = result.nrates;
+    n                   = result.sampinfo(n).endsamp;
+
+    if strcmpi(result.ft, 'ASCII') 
+        nDigitals       = result.nDigitals;
+    else
+        nDigitals = ceil(result.nDigitals / 16);
+    end;
+
+    result.n            = zeros(n, 1);
+    result.timestamp    = zeros(n, 1);
+    result.A            = zeros(n, result.nAnalogs);
+    result.D            = zeros(n, nDigitals);
+
+    if strcmpi(result.ft, 'ASCII') 
+
+       [fid, message]   = fopen([filename, '.dat'], 'r');
+
+       if fid == -1
+            disp(['Failed to open file: ', filename, '.dat']);
+            [fid, message] = fopen([filename, '.d00'], 'r');
+            
+            if fid == -1
+                disp(['Failed to open file: ', filename, '.d00']);
+                disp('Check existence of the file!');
+                return;
+            end;
+       end
+
+       for i = 1 : n
+         result.n(i)            = fscanf(fid, '%d', 1);
+         result.timestamp(i)    = fscanf(fid, ',%d', 1);
+         result.A(i, :)         = fscanf(fid, ',%d', [1, result.nAnalogs]);
+         result.D(i, :)         = fscanf(fid, ',%d', [1, nDigitals]);
+       end;
+
+    elseif strcmpi(result.ft, 'BINARY')
+
+       [fid, message]           = fopen(strcat(filename, '.dat'), 'rb');
+
+       if fid == -1
+         error message;
+       end
+
+      skip = 4 + 2 * (result.nAnalogs + nDigitals);
+
+      result.n = fread(fid, n, 'uint32', skip);
+
+      fseek(fid, 4, 'bof');
+      result.timestamp = fread(fid, n, 'uint32', skip);
+
+      for i = 1:result.nAnalogs
+         fseek(fid, 2*4+(i-1)*2, 'bof');
+         result.A(:,i) = fread(fid, n, 'int16', skip + 2);
+      end;
+
+      for i = 1:nDigitals
+         fseek(fid, 2*4 + 2*result.nAnalogs + (i-1)*2, 'bof');
+         result.D(:,i) = fread(fid, n, 'int16', skip + 2);
+      end;
+
+    end;
+
+    status      = fclose(fid);
+
+    comtrade    = result;
+
+    if realvalue
+        for channel = 1 : result.nAnalogs
+            comtrade.A(:, channel) = result.A(:, channel) ...
+                *result.anainfo(channel).a + result.anainfo(channel).b;
+            resolution(channel) = result.anainfo(channel).min ...
+                *result.anainfo(channel).a + result.anainfo(channel).b;
+            full_scale(channel) = result.anainfo(channel).max ...
+                *result.anainfo(channel).a + result.anainfo(channel).b;
+        end;
+    end;
+
+    comtrade.status = 0;
+
+    dat             = [comtrade.A, comtrade.D];
+
+    t               = comtrade.timestamp*1e-6;
+        % Testing consistency of timestamp (due conversion errors occured)
+    ddt             = t(2:length(t)) - t(1:length(t)-1);
+    if sum(ddt < 0) > 1     % Test: timestamp must increase indefinitely
+        display('CFG1 Warning: timestamp inconsistency.')
+            % Crossing zero routine to define number of samples per period
+            % It will fail if the quantity is not sinusoidal
+        crossing        = [];
+        for k = 2:length(t)
+            if comtrade.A(k,1) > 0 &&  comtrade.A(k-1,1) < 0
+                crossing = [crossing k];
+            end
+        end
+        SR = crossing(2) - crossing(1);
+        if (SR ~= 96) && (SR ~= 256)
+            display('CFG1 Warning: calculated sample rate not 96 nor 256.')
+            SR = 96;
+        end
+            % Redefining timestamp vector
+        deltaT = (1/comtrade.lf)/SR;
+        t      = 0: deltaT : deltaT*(length(t) - 1);
+    end
+        % Length of vectors consistency check and correction
+    if length(comtrade.A(:,1)) ~= length(t)
+        display(horzcat('CFG1 Warning: length of quantities differ from time.',...
+            num2str(length(comtrade.A(:,1))) , num2str(length(t))) )
+        maxV        = min(length(comtrade.A(:,1)),length(t))
+        t           = t(1:maxV);
+        comtrade.A  = comtrade.A(1:maxV,:);
+        comtrade.D  = comtrade.A(1:maxV,:);
+    end
+
+    clearvars -except dat t resolution full_scale
+return;
+% -------------------------------------------------------------------------
