@@ -325,6 +325,7 @@ function [dat, t, resolution, full_scale] = c_CFG1(Cam, Nome)
         comtrade.A  = comtrade.A(1:maxV,:);
         comtrade.D  = comtrade.A(1:maxV,:);
     end
+    % Inserindo um comentario para teste no GitHub
 
     clearvars -except dat t resolution full_scale
 return;
